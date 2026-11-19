@@ -1,4 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const inquiryEmail = 'Booking@littleredcoffeeco.ca';
+
   // Mobile Nav Toggle
   const toggle = document.querySelector('.nav-toggle');
   const nav = document.querySelector('#primary-nav');
@@ -33,9 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       saveLead({ email: val, source: 'Hero_Quick_Capture' });
-      quickStatus.textContent = "✓ You're on the list! Check your inbox soon.";
+      openInquiryEmail('Website inquiry: Secret invite request', `Email: ${val}\nRequest: Secret pop-up drops and invites`);
+      quickStatus.textContent = `Your email app should open a message to ${inquiryEmail}. Send it to complete your request.`;
       quickStatus.hidden = false;
-      quickInput.value = '';
     });
   }
 
@@ -139,10 +141,19 @@ document.addEventListener('DOMContentLoaded', () => {
         source: 'Main_VIP_Form'
       });
 
+      openInquiryEmail(
+        'Website inquiry: VIP access',
+        `First name: ${nameInput.value.trim()}\nEmail: ${emailVal}\nInterest: ${interestSelect.value}`
+      );
+      successBox.querySelector('h4').textContent = 'Complete your request';
+      successBox.querySelector('#success-message').textContent = `Your email app should open a message to ${inquiryEmail}. Send it to complete your request.`;
       successBox.hidden = false;
       successBox.focus();
-      form.reset();
     });
+  }
+
+  function openInquiryEmail(subject, body) {
+    window.location.href = `mailto:${inquiryEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   }
 
   function saveLead(leadData) {
