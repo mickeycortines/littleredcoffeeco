@@ -1,0 +1,11 @@
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+/hero-truck.jpg
+  Cache-Control: public, max-age=31536000, immutable
+/door-detail.jpg
+  Cache-Control: public, max-age=31536000, immutable
+/history-calgary.jpg
+  Cache-Control: public, max-age=31536000, immutable
