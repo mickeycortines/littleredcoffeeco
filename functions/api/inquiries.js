@@ -4,6 +4,20 @@ const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const MAX_BODY_BYTES = 4096;
 const MAX_NAME_LENGTH = 60;
 const MAX_EMAIL_LENGTH = 254;
+const MAX_TURNSTILE_TOKEN_LENGTH = 2048;
+const TURNSTILE_HOSTNAMES = new Set([
+  'littleredcoffeeco.ca',
+  'www.littleredcoffeeco.ca'
+]);
+const TURNSTILE_ERROR_CODES = new Set([
+  'missing-input-secret',
+  'invalid-input-secret',
+  'missing-input-response',
+  'invalid-input-response',
+  'bad-request',
+  'timeout-or-duplicate',
+  'internal-error'
+]);
 const INTERESTS = new Set([
   'Both',
   'Matcha Focus',
@@ -49,19 +63,28 @@ export async function onRequestPost({ request, env }) {
     return jsonResponse({ error: 'Unable to process this request. Please try again.' }, 400);
   }
 
+  const turnstileToken = typeof inquiry.turnstileToken === 'string'
+    ? inquiry.turnstileToken.trim()
+    : '';
+  if (!turnstileToken || turnstileToken.length > MAX_TURNSTILE_TOKEN_LENGTH) {
+    return jsonResponse({ error: 'Please complete the security check again.' }, 400);
+  }
+  if (typeof env.TURNSTILE_SECRET_KEY !== 'string' || !env.TURNSTILE_SECRET_KEY.trim()) {
+    console.error({ stage: 'turnstile_verification', error_code: 'missing_secret' });
+    return jsonResponse({ error: 'Security verification is temporarily unavailable.' }, 503);
+  }
+
+  const turnstileResult = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, turnstileToken);
+  if (!turnstileResult.ok) {
+    return jsonResponse(
+      { error: 'Please complete the security check again.' },
+      turnstileResult.unavailable ? 503 : 400
+    );
+  }
+
   const { email, form, firstName, interest } = validation;
   const message = createMessage({ email, form, firstName, interest });
   const gmailRaw = encodeBase64Url(message);
-  const sensitiveValues = [
-    env.GOOGLE_CLIENT_ID,
-    env.GOOGLE_CLIENT_SECRET,
-    env.GOOGLE_REFRESH_TOKEN,
-    email,
-    firstName,
-    interest,
-    message,
-    gmailRaw
-  ];
 
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) {
     return jsonResponse({ error: 'Email delivery is temporarily unavailable. Please try again later.' }, 503);
@@ -81,12 +104,9 @@ export async function onRequestPost({ request, env }) {
     });
 
     if (!tokenResponse.ok) {
-      const oauthError = await readJsonResponse(tokenResponse);
       console.error({
         stage: 'oauth_token_exchange',
-        http_status: tokenResponse.status,
-        error_code: sanitizeDiagnostic(oauthError?.error, sensitiveValues),
-        error_description: sanitizeDiagnostic(oauthError?.error_description, sensitiveValues)
+        error_code: 'token_exchange_failed'
       });
       return deliveryUnavailable();
     }
@@ -95,13 +115,10 @@ export async function onRequestPost({ request, env }) {
     if (!tokenData || typeof tokenData.access_token !== 'string' || !tokenData.access_token) {
       console.error({
         stage: 'oauth_token_exchange',
-        http_status: tokenResponse.status,
-        error_code: sanitizeDiagnostic(tokenData?.error, sensitiveValues),
-        error_description: sanitizeDiagnostic(tokenData?.error_description, sensitiveValues)
+        error_code: 'invalid_response'
       });
       return deliveryUnavailable();
     }
-    sensitiveValues.push(tokenData.access_token);
 
     const gmailResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
@@ -113,30 +130,75 @@ export async function onRequestPost({ request, env }) {
     });
 
     if (!gmailResponse.ok) {
-      const gmailErrorResponse = await readJsonResponse(gmailResponse);
-      const gmailError = gmailErrorResponse?.error;
-      const reason = Array.isArray(gmailError?.errors)
-        ? gmailError.errors.find(error => error && typeof error.reason === 'string')?.reason
-        : null;
       console.error({
         stage: 'gmail_send',
-        http_status: gmailResponse.status,
-        error_status: sanitizeDiagnostic(gmailError?.status, sensitiveValues),
-        reason: sanitizeDiagnostic(reason, sensitiveValues),
-        message: sanitizeDiagnostic(gmailError?.message, sensitiveValues)
+        error_code: 'send_failed'
       });
       return deliveryUnavailable();
     }
 
     return jsonResponse({ ok: true }, 200);
-  } catch (error) {
+  } catch {
     console.error({
-      stage: 'exception',
-      name: sanitizeDiagnostic(error?.name, sensitiveValues),
-      message: sanitizeDiagnostic(error?.message, sensitiveValues)
+      stage: 'request',
+      error_code: 'external_request_failed'
     });
     return deliveryUnavailable();
   }
+}
+
+async function verifyTurnstile(secret, token) {
+  let response;
+  try {
+    response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token })
+    });
+  } catch {
+    console.error({ stage: 'turnstile_verification', error_code: 'request_failed' });
+    return { ok: false, unavailable: true };
+  }
+
+  if (!response.ok) {
+    console.error({
+      stage: 'turnstile_verification',
+      error_code: 'http_error'
+    });
+    return { ok: false, unavailable: true };
+  }
+
+  const verification = await readJsonResponse(response);
+  if (!verification) {
+    console.error({ stage: 'turnstile_verification', error_code: 'invalid_response' });
+    return { ok: false, unavailable: true };
+  }
+
+  if (verification.success !== true) {
+    const errorCodes = Array.isArray(verification['error-codes'])
+      ? verification['error-codes'].filter(code => TURNSTILE_ERROR_CODES.has(code))
+      : [];
+    console.error({
+      stage: 'turnstile_verification',
+      error_codes: errorCodes.length ? errorCodes : ['verification_failed']
+    });
+    return {
+      ok: false,
+      unavailable: errorCodes.includes('invalid-input-secret')
+        || errorCodes.includes('missing-input-secret')
+        || errorCodes.includes('internal-error')
+    };
+  }
+
+  if (!TURNSTILE_HOSTNAMES.has(verification.hostname)) {
+    console.error({
+      stage: 'turnstile_verification',
+      error_code: 'unexpected_hostname'
+    });
+    return { ok: false, unavailable: false };
+  }
+
+  return { ok: true };
 }
 
 async function readJsonResponse(response) {
@@ -146,25 +208,6 @@ async function readJsonResponse(response) {
   } catch {
     return null;
   }
-}
-
-function sanitizeDiagnostic(value, sensitiveValues) {
-  if (typeof value !== 'string' && typeof value !== 'number') {
-    return null;
-  }
-
-  let sanitized = String(value);
-  for (const sensitiveValue of sensitiveValues) {
-    if (typeof sensitiveValue === 'string' && sensitiveValue) {
-      sanitized = sanitized.replaceAll(sensitiveValue, '[REDACTED]');
-    }
-  }
-
-  return sanitized
-    .replace(/\bBearer\s+\S+/gi, 'Bearer [REDACTED]')
-    .replace(/\b[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[REDACTED_EMAIL]')
-    .replace(/[\u0000-\u001f\u007f]/g, ' ')
-    .slice(0, 500);
 }
 
 async function readRequestBody(request) {
