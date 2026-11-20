@@ -1,6 +1,4 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const inquiryEmail = 'Booking@littleredcoffeeco.ca';
-
   // Mobile Nav Toggle
   const toggle = document.querySelector('.nav-toggle');
   const nav = document.querySelector('#primary-nav');
@@ -26,18 +24,43 @@ document.addEventListener('DOMContentLoaded', () => {
   const quickStatus = document.querySelector('#quick-status');
 
   if (quickForm) {
-    quickForm.addEventListener('submit', (e) => {
+    const quickButton = quickForm.querySelector('button[type="submit"]');
+    let quickSubmitting = false;
+
+    quickForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (quickSubmitting) return;
+
       const val = quickInput.value.trim();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!val || !emailRegex.test(val)) {
-        alert('Please enter a valid email address.');
+        quickStatus.textContent = 'Please enter a valid email address.';
+        quickStatus.classList.add('quick-error');
+        quickStatus.hidden = false;
+        quickInput.focus();
         return;
       }
-      saveLead({ email: val, source: 'Hero_Quick_Capture' });
-      openInquiryEmail('Website inquiry: Secret invite request', `Email: ${val}\nRequest: Secret pop-up drops and invites`);
-      quickStatus.textContent = `Your email app should open a message to ${inquiryEmail}. Send it to complete your request.`;
+
+      quickSubmitting = true;
+      quickButton.disabled = true;
+      quickStatus.classList.remove('quick-error');
+      quickStatus.textContent = 'Sending your request...';
       quickStatus.hidden = false;
+
+      try {
+        await postInquiry({
+          form: 'quick',
+          email: val,
+          website: quickForm.elements.website.value
+        });
+        quickStatus.textContent = 'Thanks! Your request has been sent. We’ll be in touch.';
+      } catch {
+        quickStatus.textContent = 'We couldn’t send your request right now. Please try again; your email is still here.';
+        quickStatus.classList.add('quick-error');
+      } finally {
+        quickSubmitting = false;
+        quickButton.disabled = false;
+      }
     });
   }
 
@@ -106,10 +129,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // CRM Form Handler
   const form = document.querySelector('#crm-form');
   const successBox = document.querySelector('#crm-success');
+  const formStatus = document.querySelector('#crm-status');
 
   if (form) {
-    form.addEventListener('submit', (e) => {
+    const submitButton = form.querySelector('button[type="submit"]');
+    let formSubmitting = false;
+
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (formSubmitting) return;
 
       let hasError = false;
       const nameInput = document.querySelector('#crm-first-name');
@@ -120,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const emailError = document.querySelector('#email-error');
 
       [nameError, emailError].forEach(el => el.textContent = '');
+      formStatus.hidden = true;
 
       if (!nameInput.value.trim()) {
         nameError.textContent = 'Please enter your first name.';
@@ -134,35 +163,45 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (hasError) return;
 
-      saveLead({
-        firstName: nameInput.value.trim(),
-        email: emailVal,
-        interest: interestSelect.value,
-        source: 'Main_VIP_Form'
-      });
+      formSubmitting = true;
+      submitButton.disabled = true;
+      formStatus.textContent = 'Sending your request...';
+      formStatus.classList.remove('form-status-error');
+      formStatus.hidden = false;
 
-      openInquiryEmail(
-        'Website inquiry: VIP access',
-        `First name: ${nameInput.value.trim()}\nEmail: ${emailVal}\nInterest: ${interestSelect.value}`
-      );
-      successBox.querySelector('h4').textContent = 'Complete your request';
-      successBox.querySelector('#success-message').textContent = `Your email app should open a message to ${inquiryEmail}. Send it to complete your request.`;
-      successBox.hidden = false;
-      successBox.focus();
+      try {
+        await postInquiry({
+          form: 'vip',
+          firstName: nameInput.value.trim(),
+          email: emailVal,
+          interest: interestSelect.value,
+          website: form.elements.website.value
+        });
+        formStatus.hidden = true;
+        successBox.querySelector('h4').textContent = 'You’re on the insider list!';
+        successBox.querySelector('#success-message').textContent = 'Thank you! Your request has been sent. We’ll be in touch with tasting updates.';
+        successBox.hidden = false;
+        successBox.focus();
+      } catch {
+        formStatus.textContent = 'We couldn’t send your request right now. Please try again; your details are still here.';
+        formStatus.classList.add('form-status-error');
+        formStatus.hidden = false;
+      } finally {
+        formSubmitting = false;
+        submitButton.disabled = false;
+      }
     });
   }
 
-  function openInquiryEmail(subject, body) {
-    window.location.href = `mailto:${inquiryEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  }
+  async function postInquiry(inquiry) {
+    const response = await fetch('/api/inquiries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(inquiry)
+    });
 
-  function saveLead(leadData) {
-    try {
-      const list = JSON.parse(localStorage.getItem('little_red_crm_leads') || '[]');
-      list.push({ ...leadData, date: new Date().toISOString(), city: 'Calgary' });
-      localStorage.setItem('little_red_crm_leads', JSON.stringify(list));
-    } catch (e) {
-      console.warn('Storage unavailable', e);
+    if (!response.ok) {
+      throw new Error('Inquiry delivery failed.');
     }
   }
 });
