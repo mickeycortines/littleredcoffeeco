@@ -120,6 +120,20 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   font-weight: 700;
   transition: color 0.15s ease;
 }
+.nav-social-icon svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.social-icon-instagram {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.social-icon-dot {
+  fill: currentColor;
+  stroke: none;
+}
 .nav-social-icon:hover {{ color: #BE0015; }}
 .nav-cta {
   background: #BE0015;
