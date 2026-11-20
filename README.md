@@ -1,19 +1,31 @@
-# Little Red Coffee Co. — Production Cloudflare Pages Package
+# Little Red Coffee Co.
 
-## What is in this directory:
-- `index.html`: Complete high-converting landing page with creamy yellow parchment theme.
-- `styles.css`: Complete styling sheet including responsive rules, accessible focus states, and parchment palette.
-- `script.js`: Interactive door decoder, confetti burst, inline quick capture, and local CRM lead storage.
-- `_headers`: Cloudflare Pages security and cache headers.
-- `hero-truck.jpg`: 2004 Nissan Atlas dusk architectural photo.
-- `door-detail.jpg`: High-contrast, crystal-clear macro photograph of the Kumamoto City Volunteer Fire Brigade door lettering.
-- `history-calgary.jpg`: Daytime heritage photo of the truck in Calgary.
+Static site and Cloudflare Pages Function for the Little Red Coffee Co. website.
 
-## How to Deploy to Cloudflare Pages (Free, 2 Minutes):
-1. Sign in to your [Cloudflare Dashboard](https://dash.cloudflare.com/).
-2. In the left navigation, click **Workers & Pages**.
-3. Click **Create application** -> **Pages** tab -> **Upload assets** (Direct Upload).
-4. Enter your project name (e.g. `littleredcoffeeco`).
-5. Drag and drop the unzipped folder containing these files (or `LittleRed_Cloudflare_Publish.zip`).
-6. Click **Deploy site**.
-7. Connect your custom domain `littleredcoffeeco.ca` in **Custom domains**.
+## Inquiry forms
+
+Both website inquiry forms send a same-origin `POST /api/inquiries` request. The Pages Function exchanges the configured Google refresh token for an access token and sends an email through the Gmail API. It validates the request on the server, uses the visitor's validated email as `Reply-To`, and does not store submissions in browser local storage.
+
+Configure these as encrypted Cloudflare Pages secrets for the relevant deployment environments:
+
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REFRESH_TOKEN`
+
+The Gmail account must authorize the `https://www.googleapis.com/auth/gmail.send` scope. The function sends email from `book@littleredcoffeeco.ca` to `Book@littleredcoffeeco.ca`. Do not put credential values in source code, client-side files, logs, or issue reports.
+
+## Deploy
+
+Deploy this repository as a Git-integrated Cloudflare Pages project so that Pages builds and deploys the `functions/` directory alongside the static site. Configure the production and preview secrets in **Workers & Pages → your Pages project → Settings → Variables and Secrets**. Direct dashboard asset uploads do not deploy Pages Functions.
+
+Set the Pages build command to none and the build output directory to `.` (the repository root), then deploy the selected branch. Connect `littleredcoffeeco.ca` under **Custom domains** if needed.
+
+## Test
+
+1. For a local Functions preview, create a local `.dev.vars` file with the three required values, then run `npx wrangler pages dev .`. `.dev.vars*` is gitignored; never commit or share the file.
+2. Submit the quick invite form and VIP form with valid data. Confirm each only shows its success state after the API returns success and the message arrives at `Book@littleredcoffeeco.ca` with the visitor's address as `Reply-To`.
+3. Test invalid email, an overlong name, an unsupported VIP interest, and a non-empty honeypot field; each must be rejected by the endpoint without sending mail.
+4. With the local service or preview unavailable, submit each form and confirm it shows a retry message, retains entered values, and allows a later retry.
+5. Confirm the submit buttons disable while a request is pending and that `script.js` no longer writes form data to local storage.
+
+No rate limiting is configured by this change. Cloudflare deployment and live email delivery must be verified in the target Pages project.

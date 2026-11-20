@@ -72,10 +72,15 @@
         <!-- Inline Quick-Capture Bar -->
         <div class="hero-quick-capture">
           <form id="hero-quick-form" class="quick-capture-form" novalidate>
-            <input type="email" id="quick-email" class="quick-input" placeholder="Enter email for secret pop-up drops..." required>
+            <input type="email" id="quick-email" name="email" class="quick-input" placeholder="Enter email for secret pop-up drops..." autocomplete="email" maxlength="254" required>
+            <div class="form-honeypot" aria-hidden="true">
+              <label for="quick-website">Leave this field empty
+                <input type="text" id="quick-website" name="website" tabindex="-1" autocomplete="off">
+              </label>
+            </div>
             <button type="submit" class="quick-btn">Get Secret Invites ↗</button>
           </form>
-          <p id="quick-status" class="quick-success" hidden></p>
+          <p id="quick-status" class="quick-success" role="status" aria-live="polite" hidden></p>
         </div>
 
         <!-- Social Proof Strip -->
@@ -307,9 +312,15 @@
 
               <div class="form-group">
                 <label for="crm-email">Email Address <span class="req">*</span></label>
-                <input type="email" id="crm-email" name="email" required autocomplete="email" placeholder="you@domain.com" maxlength="200">
+                <input type="email" id="crm-email" name="email" required autocomplete="email" placeholder="you@domain.com" maxlength="254">
                 <span class="field-error" id="email-error" aria-live="polite"></span>
               </div>
+            </div>
+
+            <div class="form-honeypot" aria-hidden="true">
+              <label for="crm-website">Leave this field empty
+                <input type="text" id="crm-website" name="website" tabindex="-1" autocomplete="off">
+              </label>
             </div>
 
             <div class="form-group">
@@ -324,6 +335,7 @@
             </div>
 
             <p class="privacy-inline">🔒 Zero spam. Only secret tasting drops and launch updates. Unsubscribe anytime.</p>
+            <p id="crm-status" class="form-status" role="status" aria-live="polite" hidden></p>
 
             <button type="submit" class="btn-submit">
               <span>Claim Your VIP Invite</span>
