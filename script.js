@@ -1,4 +1,29 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const turnstileTokens = { quick: null, vip: null };
+  const turnstileWidgets = { quick: null, vip: null };
+  const turnstileSiteKey = '0x4AAAAAAGJvAUaNzUQkrpcH';
+
+  function renderTurnstileWidget(formName, containerId) {
+    if (!window.turnstile) return;
+
+    turnstileWidgets[formName] = window.turnstile.render(`#${containerId}`, {
+      sitekey: turnstileSiteKey,
+      callback: token => { turnstileTokens[formName] = token; },
+      'expired-callback': () => { turnstileTokens[formName] = null; },
+      'error-callback': () => { turnstileTokens[formName] = null; }
+    });
+  }
+
+  renderTurnstileWidget('quick', 'quick-turnstile');
+  renderTurnstileWidget('vip', 'vip-turnstile');
+
+  function resetTurnstileWidget(formName) {
+    turnstileTokens[formName] = null;
+    if (turnstileWidgets[formName] !== null && window.turnstile) {
+      window.turnstile.reset(turnstileWidgets[formName]);
+    }
+  }
+
   // Mobile Nav Toggle
   const toggle = document.querySelector('.nav-toggle');
   const nav = document.querySelector('#primary-nav');
@@ -41,6 +66,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const turnstileToken = turnstileTokens.quick;
+      if (!turnstileToken) {
+        quickStatus.textContent = 'Please complete the security check before submitting.';
+        quickStatus.classList.add('quick-error');
+        quickStatus.hidden = false;
+        return;
+      }
+
       quickSubmitting = true;
       quickButton.disabled = true;
       quickStatus.classList.remove('quick-error');
@@ -51,13 +84,15 @@ document.addEventListener('DOMContentLoaded', () => {
         await postInquiry({
           form: 'quick',
           email: val,
-          website: quickForm.elements.website.value
+          website: quickForm.elements.website.value,
+          turnstileToken
         });
         quickStatus.textContent = 'Thanks! Your request has been sent. We’ll be in touch.';
       } catch {
         quickStatus.textContent = 'We couldn’t send your request right now. Please try again; your email is still here.';
         quickStatus.classList.add('quick-error');
       } finally {
+        resetTurnstileWidget('quick');
         quickSubmitting = false;
         quickButton.disabled = false;
       }
@@ -163,6 +198,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (hasError) return;
 
+      const turnstileToken = turnstileTokens.vip;
+      if (!turnstileToken) {
+        formStatus.textContent = 'Please complete the security check before submitting.';
+        formStatus.classList.add('form-status-error');
+        formStatus.hidden = false;
+        return;
+      }
+
       formSubmitting = true;
       submitButton.disabled = true;
       formStatus.textContent = 'Sending your request...';
@@ -175,7 +218,8 @@ document.addEventListener('DOMContentLoaded', () => {
           firstName: nameInput.value.trim(),
           email: emailVal,
           interest: interestSelect.value,
-          website: form.elements.website.value
+          website: form.elements.website.value,
+          turnstileToken
         });
         formStatus.hidden = true;
         successBox.querySelector('h4').textContent = 'You’re on the insider list!';
@@ -187,6 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formStatus.classList.add('form-status-error');
         formStatus.hidden = false;
       } finally {
+        resetTurnstileWidget('vip');
         formSubmitting = false;
         submitButton.disabled = false;
       }
