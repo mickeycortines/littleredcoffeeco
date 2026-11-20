@@ -1,252 +1,56 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const turnstileTokens = { quick: null, vip: null };
-  const turnstileWidgets = { quick: null, vip: null };
-  const turnstileSiteKey = '0x4AAAAAAGJvAUaNzUQkrpcH';
-
-  function renderTurnstileWidget(formName, containerId) {
-    if (!window.turnstile) return;
-
-    turnstileWidgets[formName] = window.turnstile.render(`#${containerId}`, {
-      sitekey: turnstileSiteKey,
-      callback: token => { turnstileTokens[formName] = token; },
-      'expired-callback': () => { turnstileTokens[formName] = null; },
-      'error-callback': () => { turnstileTokens[formName] = null; }
-    });
-  }
-
-  renderTurnstileWidget('quick', 'quick-turnstile');
-  renderTurnstileWidget('vip', 'vip-turnstile');
-
-  function resetTurnstileWidget(formName) {
-    turnstileTokens[formName] = null;
-    if (turnstileWidgets[formName] !== null && window.turnstile) {
-      window.turnstile.reset(turnstileWidgets[formName]);
-    }
-  }
-
-  // Mobile Nav Toggle
   const toggle = document.querySelector('.nav-toggle');
   const nav = document.querySelector('#primary-nav');
-  if (toggle && nav) {
-    toggle.addEventListener('click', () => {
-      const open = toggle.getAttribute('aria-expanded') !== 'true';
-      toggle.setAttribute('aria-expanded', String(open));
-      toggle.querySelector('.toggle-icon').textContent = open ? '✕' : '+';
-      nav.classList.toggle('open', open);
-    });
-    nav.addEventListener('click', (e) => {
-      if (e.target.closest('a')) {
-        toggle.setAttribute('aria-expanded', 'false');
-        toggle.querySelector('.toggle-icon').textContent = '+';
-        nav.classList.remove('open');
-      }
-    });
-  }
-
-  // Hero Quick Capture
-  const quickForm = document.querySelector('#hero-quick-form');
-  const quickInput = document.querySelector('#quick-email');
-  const quickStatus = document.querySelector('#quick-status');
-
-  if (quickForm) {
-    const quickButton = quickForm.querySelector('button[type="submit"]');
-    let quickSubmitting = false;
-
-    quickForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (quickSubmitting) return;
-
-      const val = quickInput.value.trim();
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!val || !emailRegex.test(val)) {
-        quickStatus.textContent = 'Please enter a valid email address.';
-        quickStatus.classList.add('quick-error');
-        quickStatus.hidden = false;
-        quickInput.focus();
-        return;
-      }
-
-      const turnstileToken = turnstileTokens.quick;
-      if (!turnstileToken) {
-        quickStatus.textContent = 'Please complete the security check before submitting.';
-        quickStatus.classList.add('quick-error');
-        quickStatus.hidden = false;
-        return;
-      }
-
-      quickSubmitting = true;
-      quickButton.disabled = true;
-      quickStatus.classList.remove('quick-error');
-      quickStatus.textContent = 'Sending your request...';
-      quickStatus.hidden = false;
-
-      try {
-        await postInquiry({
-          form: 'quick',
-          email: val,
-          website: quickForm.elements.website.value,
-          turnstileToken
-        });
-        quickStatus.textContent = 'Thanks! Your request has been sent. We’ll be in touch.';
-      } catch {
-        quickStatus.textContent = 'We couldn’t send your request right now. Please try again; your email is still here.';
-        quickStatus.classList.add('quick-error');
-      } finally {
-        resetTurnstileWidget('quick');
-        quickSubmitting = false;
-        quickButton.disabled = false;
-      }
-    });
-  }
-
-  // Decoder Interactive Experience
-  const decoderCards = document.querySelectorAll('.decoder-card');
-  const joyToast = document.querySelector('#joy-toast');
-  const toastMsg = document.querySelector('#toast-msg');
-
-  decoderCards.forEach(card => {
-    card.addEventListener('click', () => {
-      const isActive = card.classList.contains('active');
-
-      decoderCards.forEach(c => {
-        c.classList.remove('active');
-        c.classList.remove('shimmer');
-        c.setAttribute('aria-expanded', 'false');
-        c.querySelector('.decode-pill').textContent = 'Decode ✦';
-      });
-
-      if (!isActive) {
-        card.classList.add('active');
-        card.classList.add('shimmer');
-        card.setAttribute('aria-expanded', 'true');
-        card.querySelector('.decode-pill').textContent = 'Decoded ✓';
-
-        triggerSlickBurst(card);
-
-        if (joyToast && toastMsg) {
-          joyToast.hidden = false;
-          toastMsg.innerHTML = `<strong>${card.dataset.english}</strong>: ${card.dataset.joy}`;
-        }
-      } else {
-        if (joyToast) joyToast.hidden = true;
-      }
-    });
+  function closeNav() { if (!toggle || !nav) return; toggle.setAttribute('aria-expanded', 'false'); nav.classList.remove('open'); toggle.querySelector('.toggle-icon').textContent = '+'; }
+  toggle?.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(open)); nav.classList.toggle('open', open); toggle.querySelector('.toggle-icon').textContent = open ? '×' : '+';
   });
-
-  function triggerSlickBurst(target) {
-    const symbols = ['✦', '✨', '☕', '🍵', '🎌'];
-    const rect = target.getBoundingClientRect();
-
-    for (let i = 0; i < 7; i++) {
-      const spark = document.createElement('span');
-      spark.textContent = symbols[Math.floor(Math.random() * symbols.length)];
-      spark.style.position = 'fixed';
-      spark.style.left = `${rect.right - 60 + Math.random() * 40}px`;
-      spark.style.top = `${rect.top + 20}px`;
-      spark.style.fontSize = `${14 + Math.random() * 10}px`;
-      spark.style.color = '#BE0015';
-      spark.style.pointerEvents = 'none';
-      spark.style.zIndex = '9999';
-      spark.style.transition = 'transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.75s ease';
-      document.body.appendChild(spark);
-
-      requestAnimationFrame(() => {
-        const dx = (Math.random() - 0.5) * 120;
-        const dy = -(30 + Math.random() * 60);
-        spark.style.transform = `translate(${dx}px, ${dy}px) scale(1.2)`;
-        spark.style.opacity = '0';
-      });
-
-      setTimeout(() => spark.remove(), 800);
-    }
+  nav?.addEventListener('click', e => { if (e.target.closest('a')) closeNav(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && nav?.classList.contains('open')) { closeNav(); toggle.focus(); } });
+  const cards = document.querySelectorAll('.decoder-card');
+  cards.forEach(card => card.addEventListener('click', () => {
+    const open = card.getAttribute('aria-expanded') !== 'true';
+    cards.forEach(c => { c.classList.remove('active'); c.setAttribute('aria-expanded', 'false'); c.querySelector('.decode-pill').textContent = 'Decode ✦'; document.getElementById(c.getAttribute('aria-controls')).hidden = true; });
+    if (open) { card.classList.add('active'); card.setAttribute('aria-expanded', 'true'); card.querySelector('.decode-pill').textContent = 'Decoded ✓'; document.getElementById(card.getAttribute('aria-controls')).hidden = false; }
+  }));
+  const form = document.getElementById('enquiry-form');
+  if (!form) return;
+  const intent = form.elements.intent;
+  const events = document.getElementById('event-details');
+  const consent = document.getElementById('updates-consent');
+  const button = form.querySelector('[type=submit]');
+  const status = document.getElementById('enquiry-status');
+  let token = null, widget = null, submitting = false;
+  const report = (text, error = false) => { status.textContent = text; status.classList.toggle('form-status-error', error); };
+  function mode() { const quote = intent.value !== 'updates'; events.hidden = !quote; events.disabled = !quote; consent.required = intent.value !== 'quote'; button.textContent = quote ? 'Send catering enquiry' : 'Sign up for updates'; }
+  intent.addEventListener('change', mode); mode();
+  document.querySelectorAll('.enquiry-link').forEach(link => link.addEventListener('click', () => { if (!submitting && ['updates','quote','both'].includes(link.dataset.intent)) { intent.value = link.dataset.intent; mode(); } }));
+  function initSecurity() {
+    try {
+      widget = window.turnstile.render('#enquiry-turnstile', { sitekey: '0x4AAAAAAGJvAUaNzUQkrpcH', size: 'flexible', callback: value => { token = value; button.disabled = submitting; if (!submitting) report('Security check complete. Your request is ready to send.'); }, 'expired-callback': () => { token = null; button.disabled = true; report('Security check expired. Please complete it again.'); }, 'error-callback': () => { token = null; button.disabled = true; report('Security check could not load. Please reload or email Book@littleredcoffeeco.ca.', true); } });
+    } catch { report('Security check could not load. Please reload or email Book@littleredcoffeeco.ca.', true); }
   }
-
-  // CRM Form Handler
-  const form = document.querySelector('#crm-form');
-  const successBox = document.querySelector('#crm-success');
-  const formStatus = document.querySelector('#crm-status');
-
-  if (form) {
-    const submitButton = form.querySelector('button[type="submit"]');
-    let formSubmitting = false;
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (formSubmitting) return;
-
-      let hasError = false;
-      const nameInput = document.querySelector('#crm-first-name');
-      const emailInput = document.querySelector('#crm-email');
-      const interestSelect = document.querySelector('#crm-interest');
-
-      const nameError = document.querySelector('#name-error');
-      const emailError = document.querySelector('#email-error');
-
-      [nameError, emailError].forEach(el => el.textContent = '');
-      formStatus.hidden = true;
-
-      if (!nameInput.value.trim()) {
-        nameError.textContent = 'Please enter your first name.';
-        hasError = true;
-      }
-      const emailVal = emailInput.value.trim();
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailVal || !emailRegex.test(emailVal)) {
-        emailError.textContent = 'Please enter a valid email address.';
-        hasError = true;
-      }
-
-      if (hasError) return;
-
-      const turnstileToken = turnstileTokens.vip;
-      if (!turnstileToken) {
-        formStatus.textContent = 'Please complete the security check before submitting.';
-        formStatus.classList.add('form-status-error');
-        formStatus.hidden = false;
-        return;
-      }
-
-      formSubmitting = true;
-      submitButton.disabled = true;
-      formStatus.textContent = 'Sending your request...';
-      formStatus.classList.remove('form-status-error');
-      formStatus.hidden = false;
-
-      try {
-        await postInquiry({
-          form: 'vip',
-          firstName: nameInput.value.trim(),
-          email: emailVal,
-          interest: interestSelect.value,
-          website: form.elements.website.value,
-          turnstileToken
-        });
-        formStatus.hidden = true;
-        successBox.querySelector('h4').textContent = 'You’re on the insider list!';
-        successBox.querySelector('#success-message').textContent = 'Thank you! Your request has been sent. We’ll be in touch with tasting updates.';
-        successBox.hidden = false;
-        successBox.focus();
-      } catch {
-        formStatus.textContent = 'We couldn’t send your request right now. Please try again; your details are still here.';
-        formStatus.classList.add('form-status-error');
-        formStatus.hidden = false;
-      } finally {
-        resetTurnstileWidget('vip');
-        formSubmitting = false;
-        submitButton.disabled = false;
-      }
-    });
-  }
-
-  async function postInquiry(inquiry) {
-    const response = await fetch('/api/inquiries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(inquiry)
-    });
-
-    if (!response.ok) {
-      throw new Error('Inquiry delivery failed.');
-    }
-  }
+  if (window.turnstile) initSecurity();
+  else { const script = document.createElement('script'); script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'; script.async = true; script.onload = initSecurity; script.onerror = () => report('Security check could not load. Please email Book@littleredcoffeeco.ca.', true); document.head.append(script); }
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (submitting || !form.reportValidity()) return;
+    if (!token) { report('Please complete the security check.', true); return; }
+    const data = new FormData(form);
+    const payload = Object.fromEntries(['intent','firstName','email','phone','eventType','eventDate','eventLocation','guestCount','comments','website'].map(key => [key, String(data.get(key) || '').trim()]));
+    payload.updatesConsent = consent.checked;
+    payload.turnstileToken = token;
+    submitting = true; button.disabled = true; form.setAttribute('aria-busy','true'); report('Sending your request…');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
+    try {
+      const result = await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload), signal:controller.signal });
+      const body = await result.json();
+      if (!result.ok || body.ok !== true) throw new Error(body.error || 'Your request could not be sent.');
+      report(payload.intent === 'updates' ? 'Thank you! Your update signup has been sent to Little Red.' : 'Thank you! Your catering enquiry has been sent. We will reply by email. This is not a confirmed booking.');
+      status.focus();
+    } catch (error) { report(error.name === 'AbortError' ? 'Delivery could not be confirmed. Please email Book@littleredcoffeeco.ca before retrying to avoid a duplicate.' : `${error.message} Your details are still here. Please try again or email Book@littleredcoffeeco.ca.`, true); status.focus(); }
+    finally { clearTimeout(timer); submitting = false; token = null; form.removeAttribute('aria-busy'); button.disabled = true; if (widget !== null && window.turnstile) window.turnstile.reset(widget); }
+  });
 });
