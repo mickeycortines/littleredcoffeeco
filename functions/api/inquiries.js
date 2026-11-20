@@ -51,6 +51,17 @@ export async function onRequestPost({ request, env }) {
 
   const { email, form, firstName, interest } = validation;
   const message = createMessage({ email, form, firstName, interest });
+  const gmailRaw = encodeBase64Url(message);
+  const sensitiveValues = [
+    env.GOOGLE_CLIENT_ID,
+    env.GOOGLE_CLIENT_SECRET,
+    env.GOOGLE_REFRESH_TOKEN,
+    email,
+    firstName,
+    interest,
+    message,
+    gmailRaw
+  ];
 
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_REFRESH_TOKEN) {
     return jsonResponse({ error: 'Email delivery is temporarily unavailable. Please try again later.' }, 503);
@@ -70,13 +81,27 @@ export async function onRequestPost({ request, env }) {
     });
 
     if (!tokenResponse.ok) {
+      const oauthError = await readJsonResponse(tokenResponse);
+      console.error({
+        stage: 'oauth_token_exchange',
+        http_status: tokenResponse.status,
+        error_code: sanitizeDiagnostic(oauthError?.error, sensitiveValues),
+        error_description: sanitizeDiagnostic(oauthError?.error_description, sensitiveValues)
+      });
       return deliveryUnavailable();
     }
 
     const tokenData = await tokenResponse.json();
-    if (typeof tokenData.access_token !== 'string' || !tokenData.access_token) {
+    if (!tokenData || typeof tokenData.access_token !== 'string' || !tokenData.access_token) {
+      console.error({
+        stage: 'oauth_token_exchange',
+        http_status: tokenResponse.status,
+        error_code: sanitizeDiagnostic(tokenData?.error, sensitiveValues),
+        error_description: sanitizeDiagnostic(tokenData?.error_description, sensitiveValues)
+      });
       return deliveryUnavailable();
     }
+    sensitiveValues.push(tokenData.access_token);
 
     const gmailResponse = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
       method: 'POST',
@@ -84,17 +109,62 @@ export async function onRequestPost({ request, env }) {
         Authorization: `Bearer ${tokenData.access_token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ raw: encodeBase64Url(message) })
+      body: JSON.stringify({ raw: gmailRaw })
     });
 
     if (!gmailResponse.ok) {
+      const gmailErrorResponse = await readJsonResponse(gmailResponse);
+      const gmailError = gmailErrorResponse?.error;
+      const reason = Array.isArray(gmailError?.errors)
+        ? gmailError.errors.find(error => error && typeof error.reason === 'string')?.reason
+        : null;
+      console.error({
+        stage: 'gmail_send',
+        http_status: gmailResponse.status,
+        error_status: sanitizeDiagnostic(gmailError?.status, sensitiveValues),
+        reason: sanitizeDiagnostic(reason, sensitiveValues),
+        message: sanitizeDiagnostic(gmailError?.message, sensitiveValues)
+      });
       return deliveryUnavailable();
     }
 
     return jsonResponse({ ok: true }, 200);
-  } catch {
+  } catch (error) {
+    console.error({
+      stage: 'exception',
+      name: sanitizeDiagnostic(error?.name, sensitiveValues),
+      message: sanitizeDiagnostic(error?.message, sensitiveValues)
+    });
     return deliveryUnavailable();
   }
+}
+
+async function readJsonResponse(response) {
+  try {
+    const body = await response.json();
+    return body && typeof body === 'object' && !Array.isArray(body) ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeDiagnostic(value, sensitiveValues) {
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return null;
+  }
+
+  let sanitized = String(value);
+  for (const sensitiveValue of sensitiveValues) {
+    if (typeof sensitiveValue === 'string' && sensitiveValue) {
+      sanitized = sanitized.replaceAll(sensitiveValue, '[REDACTED]');
+    }
+  }
+
+  return sanitized
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [REDACTED]')
+    .replace(/\b[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[REDACTED_EMAIL]')
+    .replace(/[\u0000-\u001f\u007f]/g, ' ')
+    .slice(0, 500);
 }
 
 async function readRequestBody(request) {
