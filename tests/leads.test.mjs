@@ -1,0 +1,22 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+const source = await readFile(new URL('../functions/api/leads.js', import.meta.url), 'utf8');
+const {validateLead,createLeadMessage,onRequestPost} = await import('data:text/javascript;base64,'+Buffer.from(source).toString('base64'));
+const good={website:'',email:'guest@example.com',firstName:'Miguel',intent:'quote',updatesConsent:false,comments:'Wedding\nMatcha please',turnstileToken:'test-token'};
+let assertions=0;
+function ok(v){assert.ok(v);assertions++;}function eq(a,b){assert.equal(a,b);assertions++;}
+ok(validateLead(good).fields);ok(validateLead({...good,intent:'updates'}).error);
+for(const intent of ['updates','both'])ok(validateLead({...good,intent,updatesConsent:true}).fields.consentRecordedAt);
+for(const change of [{website:'bot'},{email:'x\r\nBcc: a@example.com'},{firstName:''},{comments:'x'.repeat(1501)},{eventDate:'2027-02-30'},{guestCount:-1},{guestCount:1.5},{updatesConsent:'yes'},{intent:'bad'}])ok(validateLead({...good,...change}).error);
+const message=createLeadMessage(validateLead(good).fields);ok(message.includes('To: Book@littleredcoffeeco.ca'));ok(message.includes('Subject: Website inquiry: Catering quote'));
+ok(Buffer.from(message.split('\r\n\r\n')[1].replace(/\r\n/g,''),'base64').toString().includes(good.comments));
+const env={TURNSTILE_SECRET_KEY:'secret',GOOGLE_CLIENT_ID:'id',GOOGLE_CLIENT_SECRET:'secret',GOOGLE_REFRESH_TOKEN:'refresh'};
+const req=(body=good,type='application/json')=>new Request('https://www.littleredcoffeeco.ca/api/leads',{method:'POST',headers:{'Content-Type':type},body:typeof body==='string'?body:JSON.stringify(body)});
+let calls=0,raw='';
+globalThis.fetch=async(url,options)=>{calls++;if(calls===3)raw=JSON.parse(options.body).raw;return Response.json(calls===1?{success:true,hostname:'www.littleredcoffeeco.ca'}:calls===2?{access_token:'token'}:{id:'message'});};
+eq((await onRequestPost({request:req(),env})).status,200);eq(calls,3);ok(Buffer.from(raw,'base64url').toString().includes('To: Book@littleredcoffeeco.ca'));
+eq((await onRequestPost({request:req(good,'text/plain'),env})).status,415);eq((await onRequestPost({request:req('{'),env})).status,400);eq((await onRequestPost({request:req(' '.repeat(17000)),env})).status,413);
+calls=0;globalThis.fetch=async()=>{calls++;return Response.json({success:false});};eq((await onRequestPost({request:req(),env})).status,400);eq(calls,1);
+globalThis.fetch=async()=>Response.json({success:true,hostname:'attacker.example'});eq((await onRequestPost({request:req(),env})).status,400);
+calls=0;globalThis.fetch=async()=>{calls++;return calls===1?Response.json({success:true,hostname:'www.littleredcoffeeco.ca'}):new Response('',{status:500});};eq((await onRequestPost({request:req(),env})).status,502);
+console.log(`${assertions} assertions passed. Delivery mocked; no external requests or real emails.`);
